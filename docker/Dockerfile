@@ -79,8 +79,6 @@ RUN Rscript -e 'install.packages("/usr/local/src/tclust_1.3-1.mod.tar.gz", repos
 COPY kernlab_0.9-25.mod.tar.gz /usr/local/src
 RUN Rscript -e 'install.packages("/usr/local/src/kernlab_0.9-25.mod.tar.gz", repos=NULL, type="source");'
 
-RUN Rscript -e 'library(devtools); install_github("satijalab/seurat", ref = "develop");'
-
 
 #Trying URL 'https://cran.rstudio.com/src/contrib/caTools_1.17.1.tar.gz'
 # https://cran.rstudio.com/src/contrib/kernlab_0.9-25.tar.gz
@@ -122,4 +120,12 @@ RUN Rscript -e 'source("http://bioconductor.org/biocLite.R");library(BiocInstall
 
 ADD supervisord.conf /etc/supervisor/conf.d/supervisord.conf
 CMD ["/usr/bin/supervisord","-c","/etc/supervisor/conf.d/supervisord.conf"]
+
+
+############################
+## more seurat configuration
+
+RUN apt-get install -y libhdf5-dev
+
+RUN Rscript -e 'library(devtools); install_github("satijalab/seurat", ref = "develop");'
 

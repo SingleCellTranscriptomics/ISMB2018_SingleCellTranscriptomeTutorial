@@ -50,29 +50,18 @@ def main():
             os.makedirs(user_dir)
             
         # launch docker
-        cmd = str("docker run -v {}:/home/training ".format(user_dir) +
-                  " -v /home/training/workshop_shared/shared:/home/training/shared_ro:ro " +
-                  " -v {}:/var/www/html ".format(user_dir) +
-                  " -v /home/training/workshop_shared/js:/var/www/html/js:ro " +
-                  " -v /home/training/workshop_shared/css:/var/www/html/css:ro " +
-                  " -p {}:80 -p {}:443 ".format(apache_user_port, gateone_user_port) +
+        cmd = str("sudo docker run --rm -v {}:/home/training ".format(user_dir) +
+                  #" -v /home/training/workshop_shared/shared:/home/training/shared_ro:ro " +
+                  #" -v {}:/var/www/html ".format(user_dir) +
+                  #" -v /home/training/workshop_shared/js:/var/www/html/js:ro " +
+                  #" -v /home/training/workshop_shared/css:/var/www/html/css:ro " +
+                  " -p {}:80 -p {}:443 -p {}:8787 ".format(apache_user_port, gateone_user_port, rstudio_user_port) +
                   " --name trinity_{} -d trinityctat/scellismb2018".format(user))
         
         #subprocess.check_output(cmd)
         
         print(cmd)
-        
-        cmd = str("docker run " +
-                  " -v {}:{} ".format(user_dir, "/home/training") +
-                  " -v /home/training/workshop_shared/shared:/home/training/shared_ro:ro " +
-                  " -p {}:8787 ".format(rstudio_user_port) +
-                  " --name rstudio_{} -d trinityctat/scell".format(user))
-
-        print(cmd)
-
-        print()
-
-        
+                
         apache_user_port += 1
         gateone_user_port += 1
         rstudio_user_port += 1
