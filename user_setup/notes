@@ -1,0 +1,13 @@
+~/BernWorkshop2016/__setup/user_setup/init_users.py --num_users 30 --ip_addr binfservapp05.unibe.ch --apache_base_port 8001 --gateone_base_port 9001 --rstudio_base_port 10001  > cmds.list
+
+~/BernWorkshop2016/__setup/user_setup/attendee_list_to_html_table.py  --ip_addr binfservapp05.unibe.ch --apache_base_port 8001 --gateone_base_port 9001 --attendee_list attendees.list.txt  > trinity_ws.html
+
+
+
+
+## for Tim / single cell workshop
+
+sudo ~/BernWorkshop2016/__setup/user_setup/init_users.py --num_users 35 --ip_addr binfservapp05.unibe.ch --apache_base_port 8051 --gateone_base_port 9051 --rstudio_base_port 10051 --user_id_start 51 > tt.docker.cmd
+
+
+~/BernWorkshop2016/__setup/user_setup/attendee_list_to_html_table.py  --ip_addr binfservapp05.unibe.ch --apache_base_port 8051 --gateone_base_port 9051 --rstudio_base_port 10051 --attendee_list attendees.list --user_id_start 51 > tt_sc_ws.html

@@ -104,9 +104,21 @@ RUN Rscript -e 'source("http://bioconductor.org/biocLite.R");library(BiocInstall
 
 RUN usermod -a -G sudo training
 
-RUN Rscript -e 'library(devtools);  install_github("hms-dbmi/pagoda2")'
-
 RUN Rscript -e 'source("http://bioconductor.org/biocLite.R");library(BiocInstaller); biocLite("useful", dep = TRUE);'
+
+
+##################
+####  singleCellTK
+
+
+RUN Rscript -e 'source("http://bioconductor.org/biocLite.R");library(BiocInstaller); biocLite("singleCellTK", dep = TRUE);'
+
+
+
+
+
+
+## auto-run setup
 
 ADD supervisord.conf /etc/supervisor/conf.d/supervisord.conf
 CMD ["/usr/bin/supervisord","-c","/etc/supervisor/conf.d/supervisord.conf"]
