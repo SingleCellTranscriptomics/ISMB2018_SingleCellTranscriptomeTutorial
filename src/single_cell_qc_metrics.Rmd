@@ -38,7 +38,7 @@ library(Matrix)
 Feel free to read more about them at https://support.10xgenomics.com/single-cell-gene-expression/datasets  .
 
 ```{r}
-counts_matrix_filename = "shared_ro/pbmcs/pbmc3k.counts.matrix.gz"
+counts_matrix_filename = "~/Documents/research/regevlab/ismb2018/ISMB2018_SingleCellTranscriptomeTutorial/data/pbmcs/pbmc3k.counts.matrix.gz"
 
 ```
 
@@ -46,10 +46,10 @@ counts_matrix_filename = "shared_ro/pbmcs/pbmc3k.counts.matrix.gz"
 # Data preparation
 ##############################
 
+The function gzfile() allows us to directly read in a gzipped file and put that output into the standard read.table() .
+
 ```{r}
 # Read data from your file, rows as genes colums as cells
-
-The function gzfile() allows us to directly read in a gzipped file and put that output into the standard read.table() .
 
 ## 1 minute
 myCountDF <- read.table(gzfile(counts_matrix_filename), header=T, row.names=1)
@@ -78,20 +78,20 @@ object.size(myCountDF) # size in bytes
 format(object.size(myCountDF), units="Mb") # size in Mb
 ```
 
-We can see here that 339.3 Mb are estimated to be used by this object in memory. This is alot but a commodity machine should be able to handle this. There are now data sets being created that are beyond a million cells, these would create objects that would be unmanageable without special computing resources.
+We can see here that 339.3 Mb are estimated to be used by this object in memory. This is alot but a commodity machine should be able to handle this. There are now data sets being created that are beyond a million cells, these would create objects that would be unmanageable without special computing resources. 
+
+Currently the myCountDF is a data frame. Matrix needs a matrix data object as the input so we take the myCountDF data frame object and convert it with the as.matrix() function to pass to Matrix() which expects a matrix.
 
 ### Convert the matrix to a sparse matrix.
 
 ```{r}
 myCountMatrixSparse <- Matrix(as.matrix(myCountDF), sparse = TRUE)
 
-Currently the myCountDF is a data frame. Matrix needs a matrix data object as the input so we take the myCountDF data frame object and convert it with the as.matrix() function to pass to Matrix() which expects a matrix.
-
 # take a look at it:
 myCountMatrixSparse[1:10,1:3]
 ```
 
-There are other ways to store this kind of data. If you can assume many of the values of the data will be zero, you do not have to store that piece but just assume it is the value if it does not exist. This is one of the ideas behind sparse representations. Here we convert the dense matrix which stores every value (include 0 many, many times in memory), to the sparse matrix that selectively store values of interest (any value but 0) and infers 0 for unstored values. This dgCMatrix object looks different when printed out, instead of zeros "." are given to indicate the vlaue was not stored (but we infer the zero when we see ".").
+There are other ways to store this kind of data. If you can assume many of the values of the data will be zero, you do not have to store that piece but just assume it is the value if it does not exist. This is one of the ideas behind sparse representations. Here we convert the dense matrix which stores every value (include 0 many, many times in memory), to the sparse matrix that selectively store values of interest (any value but 0) and infers 0 for unstored values. This dgCMatrix object looks different when printed out, instead of zeros "." are given to indicate the value was not stored (but we infer the zero when we see ".").
 
 ```{r}
 # check dimensions:
@@ -256,6 +256,9 @@ Now that we have plotted with the predictions, let's select the bad cells.
 ```{r}
 # identifier outliers as having observed genes_per_cell outside the prediction confidence interval
 outliers <- rownames(qc.df)[qc.df$genes_per_cell > pb$upr | qc.df$genes_per_cell < pb$lwr]
+plot(qc.df, log='xy')
+polygon(c(qc.df$reads_per_cell, rev(qc.df$reads_per_cell)),
+        c(pb$lwr, rev(pb$upr)), col=adjustcolor(2,alpha=0.1), border = NA)
 points(qc.df[outliers,],col=2,cex=0.6)
 # See the names of the outliers, these can be used in subsetting
 print(outliers)
@@ -303,10 +306,10 @@ How would you find the common cells among all the methods, the cells that all th
 
 ## Beginning with 10X files Seurat2: http://satijalab.org/seurat/
 
-One of the very popular products for 3' single cell transcriptomics sequencing is 10X's assays that can be processed with 10X's data processing pipeline CelLRanger. Here we go through many of the steps we saw earlier but starting with 10X output and using the Seurat R library. The Seurat R library take care of a lot of the details for us and makes available many useful functionality. We will be using the same data as before, just in a different input format (the one provided by the CellRanger pipeline).
+One of the very popular products for 3' single cell transcriptomics sequencing is 10X's assays that can be processed with 10X's data processing pipeline CelLRanger. Here we go through many of the steps we saw earlier but starting with 10X output and using the Seurat R library. The Seurat R library take care of a lot of the details for us and makes available many useful functionalities. We will be using the same data as before, just in a different input format (the one provided by the CellRanger pipeline).
 
 ```{r, cache.lazy=FALSE, tidy=TRUE,  tidy.opts=list(width.cutoff=80)}
-pbmc.files <- "shared_ro/pbmcs/10X/hg19"
+pbmc.files <- "~/Documents/research/regevlab/ismb2018/ISMB2018_SingleCellTranscriptomeTutorial/data/pbmcs/filtered_gene_bc_matrices/hg19/"
 pbmc.data <- Read10X(data.dir = pbmc.files) # read in a 10X directory using Seurat
 
 # Examine the memory use of the 
@@ -376,7 +379,7 @@ pbmc <- FilterCells(object = pbmc, subset.names = c("nGene", "percent.mito"), lo
 
 ### Preprocessing step 2 : Expression normalization
 #
-#After removing unwanted cells from the dataset, the next step is to normalize the data. By default, Seurat a global-scaling normalization method “LogNormalize” that normalizes the gene expression measurements for each cell by the total expression, multiplies this by a scale factor (10,000 by default), and log-transforms the result. There have been many methods to normalize the data, but this is the simplest and the most intuitive. The division by total expression is done to change all expression counts to a relative measure, since experience has suggested that technical factors (e.g. capture rate, efficiency of RT) are largely responsible for the variation in the number of molecules per cell, although genuine biological factors (e.g. cell cycle stage, cell size) also play a smaller, but non-negligible role. The log-transformation is a commonly used transformation that has many desirable properties, such as variance stabilization (can you think of others?).
+After removing unwanted cells from the dataset, the next step is to normalize the data. By default, Seurat a global-scaling normalization method “LogNormalize” that normalizes the gene expression measurements for each cell by the total expression, multiplies this by a scale factor (10,000 by default), and log-transforms the result. There have been many methods to normalize the data, but this is the simplest and the most intuitive. The division by total expression is done to change all expression counts to a relative measure, since experience has suggested that technical factors (e.g. capture rate, efficiency of RT) are largely responsible for the variation in the number of molecules per cell, although genuine biological factors (e.g. cell cycle stage, cell size) also play a smaller, but non-negligible role. The log-transformation is a commonly used transformation that has many desirable properties, such as variance stabilization (can you think of others?).
 #
 #For a recent review on scRNA-seq normalization, see Vallejos et al., _Nature Methods_, 2017.
 #
