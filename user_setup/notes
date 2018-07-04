@@ -1,0 +1,13 @@
+
+sudo mkdir /data
+sudo chown training /data
+sudo chgrp training /data
+
+cd /data
+
+wget https://data.broadinstitute.org/Trinity/RNASEQ_WORKSHOP/
+
+git clone git@github.com:SingleCellTranscriptomics/ISMB2018_SingleCellTranscriptomeTutorial.git
+
+ISMB2018_SingleCellTranscriptomeTutorial/user_setup/init_users.py  --num_users 5 --user_id_start 5 --ssh_base_port 10005 | tee launch.cmds
+
