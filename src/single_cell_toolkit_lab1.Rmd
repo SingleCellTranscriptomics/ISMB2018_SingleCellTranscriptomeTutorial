@@ -1,0 +1,685 @@
+---
+title: "Single-cell Toolkit Lab - 1 (10X 2.7K PBMCs)"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Goal
+
+- To give you some experience with quality control and how it is used in scRNA-Seq.
+- To introduce you to the Seurat analysis environment.
+
+## Introduction
+
+The literature points to scRNA-Seq having interesting characteristics. Although not fully characterized, two of the characteristics that are important to keep in mind when working with scRNA-Seq is drop-out and the potential for QC metrics to be confounded with biology. This combined with the ability to see more heterogeniety from cells in samples (than traditional population-based methods) has shifted the field away from, at the time established analysis patterns in population-based RNA-Seq. Here we talk through some approaches initial approaches to quality control metrics.
+
+For this tutorial, we will be analyzing the a dataset of Peripheral Blood Mononuclear Cells (PBMC) freely available from 10X Genomics, using the Seurat R package (http://satijalab.org/seurat/), a popular and powerful set of tools to conduct scRNA-seq analysis in R. In this dataset, there are 2,700 single cells that were sequenced on the Illumina NextSeq 500. Please note this tutorial borrows heavily from Seurat's tutorials, feel free to go through them in more detail.
+
+```{r global_options, echo=FALSE}
+knitr::opts_chunk$set(cache=TRUE)
+knitr::opts_chunk$set(tidy.opts=list(width.cutoff=80))
+```
+
+### Load necessary packages
+
+When loading libraries we are asking R to load code for us written by someone else. It is a convenient way to leverage and reproduce methodology developed by others.
+
+```{r, warning=FALSE, message=FALSE}
+library(Seurat)
+library(dplyr)
+library(Matrix)
+library(gdata)
+```
+
+### Human peripheral blood mononuclear cells.
+
+Feel free to read more about them at https://support.10xgenomics.com/single-cell-gene-expression/datasets  .
+
+```{r}
+counts_matrix_filename = "~shared_ro/pbmcs/pbmc3k.counts.matrix.gz"
+
+```
+
+##############################
+# Data preparation
+##############################
+
+The function gzfile() allows us to directly read in a gzipped file and put that output into the standard read.table() .
+
+```{r}
+# Read data from your file, rows as genes colums as cells
+
+## 1 minute
+myCountDF <- read.table(gzfile(counts_matrix_filename), header=T, row.names=1)
+```
+
+### Let's look at the data frame.
+
+```{r}
+myCountDF[1:10, 1:3]
+```
+
+You can see here the upper right corner of the data frame (given how we selected a subsection of the data frame). At the top of the columns we see they are indexed by 10 cell barcodes, the rows are genes. We mentioned these matrices are sparse, here we see only zeroes; this is the most common value in these sparse matrices. The data frame is too big to meaningfully view in its entirety in this way. Let's inspect the matrix in other ways.
+
+### How big is the matrix?
+
+```{r}
+dim(myCountDF) # report num rows and cols
+```
+
+Here we see the data frame has 32738 rows and 2700 columns. This makes sense given this is a pbmc3k data set (3k indicating approximately 3 thousand cells) and columns in this setting are cells (we say that when looking at the corner of the data).
+
+### How much memory does this data frame take up?
+
+```{r}
+object.size(myCountDF) # size in bytes
+format(object.size(myCountDF), units="Mb") # size in Mb
+```
+
+We can see here that 339.3 Mb are estimated to be used by this object in memory. This is alot but a commodity machine should be able to handle this. There are now data sets being created that are beyond a million cells, these would create objects that would be unmanageable without special computing resources. 
+
+Currently the myCountDF is a data frame. Matrix needs a matrix data object as the input so we take the myCountDF data frame object and convert it with the as.matrix() function to pass to Matrix() which expects a matrix.
+
+### Convert the matrix to a sparse matrix.
+
+```{r}
+myCountMatrixSparse <- Matrix(as.matrix(myCountDF), sparse = TRUE)
+
+# take a look at it:
+myCountMatrixSparse[1:10,1:3]
+```
+
+There are other ways to store this kind of data. If you can assume many of the values of the data will be zero, you do not have to store that piece but just assume it is the value if it does not exist. This is one of the ideas behind sparse representations. Here we convert the dense matrix which stores every value (include 0 many, many times in memory), to the sparse matrix that selectively store values of interest (any value but 0) and infers 0 for unstored values. This dgCMatrix object looks different when printed out, instead of zeros "." are given to indicate the value was not stored (but we infer the zero when we see ".").
+
+```{r}
+# check dimensions:
+dim(myCountMatrixSparse)
+
+# check size:
+object.size(myCountMatrixSparse) # size in bytes
+format(object.size(myCountMatrixSparse), units="Mb") # size in Mb
+
+# size reduction:
+object.size(myCountMatrixSparse) / object.size(myCountDF)
+
+```
+
+Even though we are now storing only non-zero data, the object still knows the dimensions of the data. If we look at how much the object takes in memory we see that we are taking 1/10 the memory. This is pretty awesome and trick many R packages use to scale to larger data (but not the largest, there are many more tricks that can get you further when you need them ;-) ). Keep this trick in mind as you think about analysis in the future.
+
+### Let's remove that pesky dense data frame from memory.
+
+```{r}
+# Remove the original matrix to reduce memory usage
+rm(myCountDF)
+```
+
+We will continue working with sparse matrices and not data frame but we have both in memory. Removing the unneccessary object from memory keeps the memory free for later analysis and objects.
+
+## Filtering 'bad' cells
+
+When working with data it is important to explore the data. Get a feel for the distributions represented in the data. You can learn a lot about your data with simple plotting. Let's do some plotting to look at the number of reads per cell, reads per genes, expressed genes per cell (often called complexity), and rarity of genes (cells expressing genes).
+
+### Look at the summary counts.
+
+```{r}
+reads_per_cell <- Matrix::colSums(myCountMatrixSparse)
+reads_per_gene <- Matrix::rowSums(myCountMatrixSparse)
+genes_per_cell <- Matrix::colSums(myCountMatrixSparse>0) # count gene only if it has non-zero reads mapped.
+cells_per_gene <- Matrix::rowSums(myCountMatrixSparse>0) # only count cells where the gene is expressed
+```
+
+colSums and rowSum are function that work on each row or column in a matrix and return the column sums or row sums as a vector. If this is true reads_per_cell should have 1 entry per cell, let's make sure the length of the returned vector matches the matrix dimension for column. How would you do that? ( Hint:length() ).
+
+Notes:
+1. Function selection. Matrix::colSums is a way to force certain methods to be used. There are many libraries that implement colSums, we are forcing the one from the Matrix library to be used here to make sure it handles the dgCmatrix (sparse matrix) correctly. This is good practice.
+
+```{r}
+hist(log10(reads_per_cell+1),main='reads per cell',col='wheat')
+hist(log10(genes_per_cell+1), main='genes per cell', col='wheat')
+plot(reads_per_cell, genes_per_cell, log='xy', col='wheat')
+hist(log10(reads_per_gene+1),main='reads per gene',col='wheat')
+```
+
+Here we see examples of plotting a new plot, the histogram. As we can see R makes this really easy with the hist function. We are also transforming the values to log10 before plotting, this is done with the log10 method. When logging count data, the + 1 is often used to avoid log10(0) which is not defined.
+
+### Plot genes per cell with cells ranked accordingly.
+
+This is a very useful plot, it tries to show you the natural distribution of library complexity in the sequencing run. One can use this plot to investigate observations (potential cells) that are actually failed libraries that was sequenced (lower end outliers) or observations that happen to be doublets (higher end outliers).
+
+```{r}
+plot(sort(genes_per_cell), xlab='cell', log='y', main='genes per cell (ordered)')
+```
+
+Notes:
+1. Plotting. Here we use a simple scatter plot, but we sort the library (cell) complexity before plotting. X here is the sorted complexity, y is unspecified and is the order of the values.
+
+### Cell filtering criteria
+
+We do not want to be working with observations (cells) that are poor libraries or resulting from doublet cells so we are going to filter on both ends of the distribution. We can see inflection points around 350 and 1800. We will plot lines to view these values. Feel free to play with numbers and plot multiple times to see the result.
+
+```{r}
+#  set upper and lower thresholds for genes per cell:
+MIN_GENES_PER_CELL <- 350  ## user-defined setting
+MAX_GENES_PER_CELL <- 1800  ## user-defined setting
+
+# now replot with the thresholds being shown:
+plot(sort(genes_per_cell), xlab='cell', log='y', main='genes per cell (ordered)')
+abline(h=MIN_GENES_PER_CELL, col='magenta')  # lower threshold
+abline(h=MAX_GENES_PER_CELL, col='gold') # upper threshold
+```
+
+You can see the default values are a little conservative, we are erroring here on not losing data. This should not be something that is not very exact should be viewed as something you have a general range to select within.
+
+*** Advanced Challenge ***
+Given the ordering of the cells when sorted can you plot the expression of specific genes on the plot? This is helpful to do if concerned certain biology is enriched on an end of the complexity. You can plot marker genes to view if they are enriched in different regions of complexity.
+Plot: scatter plot
+X: Cells in order of complexity (as in previous)
+Y: Complexity (as in previous)
+Color: Markers painted in a monochromatic gradient based on the expression of a specified gene.
+
+### Examine percent mitochondrial read content.
+
+Percent mitochondrial reads is often used to measure quality of cells. It has been noticed that increases in mitochondrial reads indicate stressed or "upset" cells. This is often attributed to abuse during sorting. Here we are going to measure the percent of expression attributed to genes in the mitochondria. Be careful with this metadata, it may be you are seeing true biology associated with the mitochondria.
+
+```{r}
+# define the mitochondrial genes
+mito_genes <- grep("^mt-", rownames(myCountMatrixSparse) , ignore.case=T, value=T)
+print(mito_genes)
+```
+
+First we need to get mitochondrial cells that exist in the counts matrix. But how did we do this? We used the function "grep" which is a classic unix commandline tool for searching for substrings. It is so useful R has implemented this function so we can use it here. Please take a moment to read grep's description. So here we took all the rownames from the matrix and searched through each row name for "^mt-" ("^" indicates beginning of the word followed by the letters "m" then "t" then "-"). This trick only works because we used a reference transcript (gtf file) that used this naming convention. This is a common trick to calculate mitochondrial reads.
+
+Feel free to try to search for other genes or gene families, make sure NOT to store the result as "mito_genes". Please use another variable so the rest of the tutorial is not affected.
+
+```{r}
+# compute pct mito
+mito_gene_read_counts = Matrix::colSums(myCountMatrixSparse[mito_genes,])
+pct_mito = mito_gene_read_counts / reads_per_cell * 100
+plot(sort(pct_mito))
+boxplot(pct_mito)
+```
+
+Now that we have the mitochondrial genes, we select them from the matrix and calculate the complexity of the cells just on those genes.We then take those results and the fraction of those mitochondrial counts in the relation to all counts to calculate a percentage of mitochondrial counts.
+
+We plotted them here as traditional box plots and also sorted scatter plots which are better at detailing inflection points. In this case only the upper end of the distribution is filtered as we are concerned with unusually high percent counts.
+
+### Decide on maximum allowed percent mitochondrial reads.
+
+```{r}
+MAX_PCT_MITO <- 10   ## user-defined setting
+
+plot(sort(pct_mito))
+abline(h=MAX_PCT_MITO, col='red')
+```
+
+Here we plot a guess for a cut off on the plot to visualize the filtering point.
+
+*** Challenge ***
+Plot the box plot with the line indicating your cut-off. Please use the color 'cyan'.
+
+## Cell Selection as per Peter Karchenko - the Pagoda way
+
+Pagoda is a pretty awesome package by the Karchenko lab. While we are looking at different ways of looking at data to determine how to filter it (we will filter it soon), we want to mention a pretty cool filtering method that show up in the Pagoda package.
+
+```{r}
+qc.df <- data.frame(reads_per_cell=reads_per_cell, genes_per_cell=genes_per_cell)
+head(qc.df)
+```
+
+First we start with a data frame made from the reads_per_cell and genes_per_cell data we calculated earlier. head() allows us to see a little of that data frame.
+
+### Plot gene_per_cell vs. reads_per_cell, define outliers.
+
+Here we move into a little more advanced territory, take your time with the functions to read through what is happening.
+
+```{r}
+library(MASS)
+qc.df <- qc.df[order(qc.df$reads_per_cell),] # order by reads_per_cell
+plot(qc.df, log='xy')
+qc.model <- rlm(genes_per_cell~reads_per_cell,data=qc.df) # robust linear model, not sensitive to outliers
+summary(qc.model) # See the model results
+p.level <- 1e-3 # Set our p-value cutt-off
+# predict genes_per_cell based on observed reads_per_cell
+suppressWarnings(pb <- data.frame(predict(qc.model, interval='prediction', 
+                                          level=1-p.level,
+                                          type="response"))) # define a confidence interval
+polygon(c(qc.df$reads_per_cell, rev(qc.df$reads_per_cell)),
+        c(pb$lwr, rev(pb$upr)), col=adjustcolor(2,alpha=0.1), border = NA) # Plot based on those predictions.
+```
+
+So let's step back for a minute and talk through what we did. First we loaded the lbrary MASS so we had access to the rlm method. This method allows us to fit a model using robust regression. We then ordered the data by complexity and ploted it to confirm. We then performed robust regression in one line using rlm, this returned the model that we viewed a summary of using the function "summary". We set a p-value for predicting and calculated data we needed forconfidence intervals which we plotted. The use of a type of regression that returns a model that can then be summaried or used to predict with is a common pattern in R for many types of regression and prediction (in general). This demonstrates the power of R.
+
+Now that we have plotted with the predictions, let's select the bad cells.
+
+```{r}
+# identifier outliers as having observed genes_per_cell outside the prediction confidence interval
+outliers <- rownames(qc.df)[qc.df$genes_per_cell > pb$upr | qc.df$genes_per_cell < pb$lwr]
+plot(qc.df, log='xy')
+polygon(c(qc.df$reads_per_cell, rev(qc.df$reads_per_cell)),
+        c(pb$lwr, rev(pb$upr)), col=adjustcolor(2,alpha=0.1), border = NA)
+points(qc.df[outliers,],col=2,cex=0.6)
+# See the names of the outliers, these can be used in subsetting
+print(outliers)
+```
+
+Here we see we can select the outliers outside the polygon / confidence interval by selecting cells with greater complexity than the upper bounds or lower complexity than the lower bounds of the confidence internval. We select those cells and hold thier names (the row names) and plot then in red or print them out.
+
+To see the confidence interval bounds use the summary command.
+
+```{r}
+summary(pb)
+```
+
+### Removing bad cells
+
+Ok, we showed you 3 different ways to filter cells. Why? Well first, it is good practice! Second, filtering on just one QC metric has the potential to be confounded with biology while if several QC metrics agree there is more evidence that the cells are actually bad. But that being said, it is about time we start filtering cells.
+
+```{r}
+# prune cells
+valid_cells = colnames(myCountMatrixSparse) # all cells
+message('starting with: ', length(valid_cells), ' cells') # number starting with
+
+## remove cells based on gene count criteria:
+valid_cells = valid_cells[genes_per_cell >= MIN_GENES_PER_CELL & genes_per_cell <= MAX_GENES_PER_CELL]  # set values based on your evaluation above
+message('after filtering low and high gene count outliers: ', length(valid_cells), ' cells') # number after filtering based gene count thresholds
+
+## remove cells having excessive mito read content
+valid_cells = valid_cells[valid_cells %in% names(pct_mito)[pct_mito <= MAX_PCT_MITO]]
+message('after removing high-mito cells: ', length(valid_cells), ' cells') # number remaining after high-mito cells removed
+
+## remove cells identified as outliers via the Karchenko method
+valid_cells = valid_cells[ ! valid_cells %in% outliers]
+message('after removing final outliers: ', length(valid_cells), ' cells') # number surviving outlier detection
+
+## update the count matrix to contain only the valid cells
+myCountMatrixSparse = myCountMatrixSparse[,valid_cells]
+## cleaning up memory for this section of the tutorial
+rm(myCountMatrixSparse)
+```
+Here we show examples of filtering on each type of filtering we performed. As we can see some removed more cells than others.
+
+*** Advanced Challenge ***
+How would you find the common cells among all the methods, the cells that all three methods agree are bad? How many cells are common and how would you filter them?
+
+
+## Beginning with 10X files Seurat2: http://satijalab.org/seurat/
+
+One of the very popular products for 3' single cell transcriptomics sequencing is 10X's assays that can be processed with 10X's data processing pipeline CelLRanger. Here we go through many of the steps we saw earlier but starting with 10X output and using the Seurat R library. The Seurat R library take care of a lot of the details for us and makes available many useful functionalities. We will be using the same data as before, just in a different input format (the one provided by the CellRanger pipeline).
+
+```{r, cache.lazy=FALSE, tidy=TRUE,  tidy.opts=list(width.cutoff=80)}
+pbmc.files <- "shared_ro/10x/hg19/"
+pbmc.data <- Read10X(data.dir = pbmc.files) # read in a 10X directory using Seurat
+
+# Examine the memory use of the 
+format(object.size(x = as.matrix(x = pbmc.data)), units = 'Gb')
+```
+
+Seurat works with the count matrix in the sparse format, it is far more memory efficient as we observed earlier.
+
+```{r}
+pbmc <- CreateSeuratObject(raw.data = pbmc.data, min.cells = 3, min.genes = 200, project = "10X_PBMC")
+```
+
+As is the case of this R workflow, we center all our analysis on a single "object", in this case an object of the class Seurat that we will call `pbmc`. This object will contain various "slots" that will store not only the raw input data, but also the results from various computations below. This has the advantage that we do not need to keep track of inidividual variables of interest - they can all be collapsed into a single object as long as these slots are pre-defined.
+
+This object was made with the CreateSeuratObject(). It is important to understand this function as it is very powerful and is doing many things at once. Here we are filtering genes that are are expressed in 2 cells or less and are filtering cells with complexity less than 200.
+
+`pbmc@raw.data` is a slot that stores the original gene expression matrix. We can visualize the first 20 rows (genes) and the first 10 columns (cells).
+
+```{r, cache.lazy=FALSE}
+pbmc@raw.data[1:20,1:10]
+```
+
+## Preprocessing step 1 : Filter out unhealthy cells
+
+The object initialization step above only considered cells that express at least 200 genes. Additionally, we would like to exclude cells that are unhealthy. A common metric to judge this (although by no means the only one ) is the relative expression of mitochondrially derived genes. When the cells apoptose due to stress, their mitochondria becomes leaky and there is widespread RNA-degradation. Thus a relative enrichment of mitochondrially derived genes can be a tell-tale sign of cell stress. Here, we compute the proportion of transcripts that are of mitochondrial origin for every cell (`percent.mito`), and visualize its distribution as a violin plot. We also use the `GenePlot` function to observe how `percent.mito` correlates with other metrics. We have done much of this before without the use of Seurat, here we see how to do this using Seurat.
+
+```{r, cache.lazy=FALSE, tidy=TRUE, tidy.opts=list(width.cutoff=120), fig.width= 12, fig.height=6.5}
+# The number of genes and UMIs (nGene and nUMI) are automatically calculated
+# for every object by Seurat.  For non-UMI data, nUMI represents the sum of
+# the non-normalized values within a cell We calculate the percentage of
+# mitochondrial genes here and store it in percent.mito using AddMetaData.
+# We use object@raw.data since this represents non-transformed and
+# non-log-normalized counts The % of UMI mapping to MT-genes is a common
+# scRNA-seq QC metric.
+mito.genes <- grep(pattern = "^MT-", x = rownames(x = pbmc@data), value = TRUE)
+percent.mito <- Matrix::colSums(pbmc@raw.data[mito.genes, ])/Matrix::colSums(pbmc@raw.data)
+
+# AddMetaData adds columns to object@meta.data, and is a great place to
+# stash QC stats
+# this also allows us to plot the metadata values using the Seurat's VlnPlot()
+head(pbmc@meta.data) # Before adding
+pbmc <- AddMetaData(object = pbmc, metadata = percent.mito, col.name = "percent.mito")
+head(pbmc@meta.data) # After adding
+VlnPlot(object = pbmc, features.plot = c("nGene", "nUMI", "percent.mito"), nCol = 3)
+```
+
+Here we calculated the percent mitochondrial reads (as we did before) and added it to the Seurat object in the slot for metadata. This allowed us to plot using the violin plot function provided by Seurat.
+
+```{r}
+# GenePlot is typically used to visualize gene-gene relationships, but can
+# be used for anything calculated by the object, i.e. columns in
+# object@meta.data, PC scores etc.  Since there is a rare subset of cells
+# with an outlier level of high mitochondrial percentage and also low UMI
+# content, we filter these as well
+GenePlot(object = pbmc, gene1 = "nUMI", gene2 = "percent.mito")
+GenePlot(object = pbmc, gene1 = "nUMI", gene2 = "nGene")
+```
+
+## Examine contents of pbmc
+```{r}
+str(pbmc)
+```
+
+These are the slots in the Seurat object.Some of the slots are automatically updated by Seurat as you move through analysis. Take a moment to look through the information, knowing the slots allow you to leverage work Seurat has already done for you. 
+
+```{r}
+VlnPlot(object = pbmc, features.plot = c("nGene"), group.by = c('orig.ident'))
+```
+
+Remember plotting violin plots, here we plot by what Seurat calls orig.ident. Identity is a concept that is used in the Seurat object ot refer to the cell identity (or cell groups). We will see how this updates as we go.
+
+We will need some metadata to play with, let's try our old trick again and calculate and store percent mitochondrial reads.
+
+```{r}
+# let's just recompute percent mito again based on our filtered matrix:
+mito.genes <- grep(pattern = "^mt-", x = rownames(x = pbmc@raw.data), ignore.case = TRUE, value = TRUE)
+percent.mito <- Matrix::colSums(pbmc@raw.data[mito.genes, ]) /
+                                        Matrix::colSums(pbmc@raw.data)
+
+# AddMetaData adds columns to object@data.info, and is a great place to stash QC stats
+pbmc <- AddMetaData(object = pbmc, 
+                          metadata = percent.mito, 
+                          col.name = "percent.mito")
+
+VlnPlot(object = pbmc, features.plot = c("nGene", "nUMI", "percent.mito"), nCol = 3)
+```
+
+Let's not forget to filter!
+
+```{r}
+pbmc <- FilterCells(object = pbmc, subset.names = c("nGene", "percent.mito"), low.thresholds = c(200, -Inf), high.thresholds = c(2500, 0.05))
+```
+
+
+### Preprocessing step 2 : Expression normalization
+
+After removing unwanted cells from the dataset, the next step is to normalize the data. By default, we employ a global-scaling normalization method "LogNormalize" that normalizes the gene expression measurements for each cell by the total expression, multiplies this by a scale factor (10,000 by default), and log-transforms the result. There have been many methods to normalize the data, but this is the simplest and the most intuitive. The division by total expression is done to change all expression counts to a relative measure, since experience has suggested that technical factors (e.g. capture rate, efficiency of RT) are largely responsible for the variation in the number of molecules per cell, although genuine biological factors (e.g. cell cycle stage, cell size) also play a smaller, but non-negligible role. The log-transformation is a commonly used transformation that has many desirable properties, such as variance stabilization (can you think of others?).
+
+```{r normalize}
+pbmc <- NormalizeData(object = pbmc, 
+                            normalization.method = "LogNormalize", 
+                            scale.factor = 1e4)
+```
+
+
+Well there you have it! A filtered and normalized data set. A great accomplishment for your first dive into scRNA-Seq analysis. Well done!
+
+## Detection of variable genes across the single cells
+
+Seurat calculates highly variable genes and focuses on these for downstream analysis. **`FindVariableGenes`** calculates the average expression and dispersion for each gene, places these genes into bins, and then calculates a z-score for dispersion within each bin. This helps control for the relationship between variability and average expression. This function is unchanged from (Macosko *et al*.), but new methods for variable gene expression identification are coming soon. We suggest that users set these parameters to mark visual outliers on the dispersion plot, but the exact parameter settings may vary based on the data type, heterogeneity in the sample, and normalization strategy. The parameters here identify ~2,000 variable genes, and represent typical parameter settings for UMI data that is normalized to a total of 1e4 molecules.
+
+```{r var_genes}
+pbmc <- FindVariableGenes(object = pbmc, mean.function = ExpMean, dispersion.function = LogVMR, x.low.cutoff = 0.0125, x.high.cutoff = 3, y.cutoff = 0.5, num.bin=20)  # if this fails, experiment with the num.bin setting
+```
+
+We can see the Seurat object slots have updated for the FindVariableGenes section. Let's use the slot to see how many variable genes we found.
+
+```{r len_var_genes}
+str(pbmc)
+length(x = pbmc@var.genes)
+```
+
+We mentioned before that data needs special handling before performing PCA. Let's use ScaleData to scale and center the data and then perform PCA.
+
+```{r pca_pre_regress}
+pbmc <- ScaleData(object = pbmc)
+pbmc <- RunPCA(object = pbmc, pc.genes = pbmc@var.genes, do.print = TRUE, pcs.print = 1:2, genes.print = 5, pcs.compute = 40, maxit = 500, weight.by.var = FALSE)
+PCAPlot(object = pbmc, dim.1 = 1, dim.2 = 2)
+```
+
+There are a couple ways to visualize PCA in Seurate.
+
+```{r}
+# We can list top genes associated with components.
+PrintPCA(pbmc)
+# We can plot the top genes associated with components.
+VizPCA(pbmc, pcs.use=1:2)
+# We can plot a heat map of genes associated with each component (here component 1)
+PCHeatmap(object = pbmc, pc.use = 1, cells.use = 500, do.balanced = TRUE, label.columns = FALSE)
+```
+
+Now that we have performed PCA we can plot metadata and genes on the cell groups. Here we use the FeaturePlot function to plot either on the PCA. We know we are using PCA (it is specified in reduction.use) specifically the first two PCA components (specified in dim.1 and dim.2).
+
+```{r}
+FeaturePlot(pbmc, dim.1=1, dim.2=2, reduction.use='pca', features.plot=c('nGene'))
+```
+
+How would you plot the same plot using component 2 and component 3. If we wanted to save the Seurate object we could use the save function (and later load with load(). We are not going to do this know but this is one of the way people share analysis, by saving and sharing Seurat R objects.
+
+```{r saveobject}
+# save(pbmc, file = "pbmc-pre_batch_correct.Robj")
+```
+
+PCA will create many components of variation but not all are useful. One way to select components is to use an elbow or scree plot. Let's plot one.
+
+```{r}
+PCElbowPlot(object = pbmc)
+```
+
+From this plot we are going to select the first 10 components to use in the t-SNE visualization.
+
+Another option is to select the top significant PCs based on a jackstraw analysis. This process takes a while. 
+
+```{r jackstraw}
+
+pbmc=JackStraw(pbmc, num.pc = 20, num.replicate = 100, prop.freq = 0.01, display.progress = TRUE, do.par = FALSE, num.cores = 6, maxit = 1000)
+JackStrawPlot(pbmc, PCs = 1:5, nCol = 3, score.thresh = 1e-05, plot.x.lim = 0.1, plot.y.lim = 0.3)
+
+```
+
+
+```{r tsne}
+pbmc <- RunTSNE(object = pbmc, dims.use = 1:10, do.fast = TRUE)
+TSNEPlot(object = pbmc)
+```
+
+Let's plot complexity and percent mitochondrial reads on the t-SNE visualization. This will help visualize if either is driving the structure of the cell groupings.
+
+```{r}
+FeaturePlot(pbmc, reduction.use='tsne', features.plot=c("nGene","percent.mito"))
+```
+
+## Standard regressing out the nGene and percent.mito effects:
+
+Sometimes there may be unwanted signal in the data that are associated with certain metadata. In these cases it may be helpful to regress out that signal. Here we practice with regressing out complexity and percent mitochondrial reads. We do this by including the variables to regress out in the ScaleData function (in the vars.to.regress parameter).
+
+```{r}
+# regress out the nGene effects
+pbmc <- ScaleData(object = pbmc, vars.to.regress = c("nGene", "percent.mito"))
+  
+# rerun PCA on the regressed-out, 'cleaner' data
+pbmc <- RunPCA(object = pbmc, pc.genes = pbmc@var.genes, 
+                     do.print = FALSE, pcs.compute = 40, weight.by.var = FALSE)
+  
+# redo PCA and tSNE
+pbmc <- RunTSNE(object = pbmc, 
+                      dims.use = 1:10, # pca dimensions to use
+                      seed.use = 12345, # random seed, layout will differ on diff settings
+                      do.fast = TRUE) # runs Barnes-hut t-SNE
+TSNEPlot(object = pbmc)
+```
+
+Now we can plot using the cleaned data. Let's do this with the original complexity and percent mitochondrial reads.
+
+```{r}
+# plot pca according to number of genes
+FeaturePlot(pbmc, dim.1=1, dim.2=2, reduction.use='tsne',features.plot=c('nGene', 'percent.mito'))
+```
+
+## Cluster the cells
+
+We use a graph-based community detection algorithm to cluster cells into cell subsets. 
+
+
+```{r cluster}
+## Find clusters
+
+# save.SNN = T saves the SNN so that the clustering algorithm 
+#           can be rerun using the same graph
+# but with a different resolution value (see docs for full details)
+pbmc <- FindClusters(object = pbmc, reduction.type = "pca", dims.use = 1:10, resolution = 0.6, 
+                           print.output = 0, save.SNN = TRUE)
+
+# note that you can set do.label=T to help label individual clusters
+TSNEPlot(object = pbmc, do.label=T)
+```
+
+You can save the object at this point so that it can easily be loaded back in without having to rerun the computationally intensive steps performed above, or easily shared with collaborators.
+```{r}
+# save(pbmc, file = "pbmc-post_batch_correct.Robj")
+```
+
+## Quality controling clusters
+
+It is important to understand what is driving the clusters you are observing. This helps you to understand if you are looking at biological or technical effects. One of the easiest ways to do this is to plot technical metrics (like complexity, percent mictochondrial reads, or processing batches). We have already experimented with plotting metadata (or technical batches using the FeaturePlot()).
+
+```{r}
+### Plotting a prior known genes
+FeaturePlot(object = pbmc, features.plot = c("CD14"), cols.use = c("grey", "blue"), reduction.use = "tsne")
+```
+
+Feel free to print other known genes before we calculate our markers.
+
+### Assigning identity to clusters
+
+Once you plot know marker genes, you may know the identity of some clusters. If so you can update the ident slot to new values.
+
+```{r}
+FeaturePlot(object = pbmc, features.plot = c("IL7R", "GNLY", "NKG7","FCGR3A","MS4A7", "CD14", "FCER1A", "CST3", "LYZ", "PPBP", "CD8A","MS4A1"), cols.use = c("grey", "blue"), nCol = 4,reduction.use = "tsne")
+print(unique(pbmc@ident))
+current.cluster.ids <- c(0:7)
+new.cluster.ids <- c("CD4 T cells","CD14+ Monocytes", "B cells", "CD8 T cells", "NK cells", "FCGR3A+ Monocytes", "Dendritic cells", "Megakaryocytes")
+pbmc@ident <- plyr::mapvalues(x = pbmc@ident, from = current.cluster.ids, to = new.cluster.ids)
+TSNEPlot(object = pbmc, do.label = TRUE, pt.size = 0.5)
+```
+
+How did this work? We took the original cluster ids (originally by default numbered) and mapped them to new values using the mapvalues command.
+
+## Selecting Marker Genes
+
+```{r}
+MIN_LOGFOLD_CHANGE = 1 # set to minimum required average log fold change in gene expression.
+MIN_PCT_CELLS_EXPR_GENE = 0.1  # minimum percent of cells that must express gene in either clstr.
+
+# Here we find all markers for 
+all.markers = FindAllMarkers(pbmc,
+                             min.pct = MIN_PCT_CELLS_EXPR_GENE,
+                             thresh.use = MIN_LOGFOLD_CHANGE,
+                             only.pos = TRUE,
+                             test.use="bimod") # likelihood ratio test
+```
+
+Here we find markers for all clusters. There are other ways of selecting markers, feel free to read original Seurat tutorial for more details. Here we use the bimod method (Likelihood-ratio test). There are many other options including MAST.
+
+Let's look at the top markers for different comparisons sorted by p-value.
+
+```{r}
+# sort all the markers by p-value
+all.markers.sortedByPval = all.markers[order(all.markers$p_val),]
+
+# take a look at the top most significant markers
+head(all.markers.sortedByPval)
+```
+
+## Make a heatmap showing the top 10 markers
+
+We can also make heat maps of the top markers.
+
+```{r}
+library(dplyr)
+top10 <- all.markers.sortedByPval %>%  group_by(cluster)  %>% do(head(., n=10))
+DoHeatmap(object = pbmc, genes.use = top10$gene, slim.col.label = TRUE, remove.key = TRUE)
+```
+
+Often one sees in publications plotting gene expression on t-SNE plot to see how specific the gene expression is to the clusters. Let's try a couple here.
+
+```{r}
+# examine the top 4 markers in the context of the tSNE plots:
+FeaturePlot(pbmc, features.plot = all.markers.sortedByPval$gene[1:4])
+```
+
+Although you can always just perform differential expression on one cluster to get specific gene lists, if you performed all comparisons at once here is some advanced code to pull out unique marker genes to clusters.
+
+## Get genes uniquely DE in each cluster:
+```{r}
+genes_uniquely_DE = all.markers.sortedByPval %>% dplyr::filter(avg_logFC > MIN_LOGFOLD_CHANGE) %>% group_by(gene) %>%  summarize(n=n()) %>%  filter(n==1)
+
+genes_uniquely_DE.markers.sortedByPval =
+  all.markers.sortedByPval[all.markers.sortedByPval$gene
+                           %in% genes_uniquely_DE$gene,]
+
+top_marker_each = genes_uniquely_DE.markers.sortedByPval %>%
+      dplyr::filter(avg_logFC >= MIN_LOGFOLD_CHANGE) %>%
+      dplyr::group_by(cluster) %>%
+      do(head(., n=1))  # set to higher value to get that number of top markers each clst.
+print(top_marker_each)
+```
+
+Here we write a for loop to iterate through each top marker and plot it using feature plot.
+
+```{r}
+for (gene in top_marker_each$gene) {
+  FeaturePlot(pbmc, features.plot = gene)
+}
+
+
+```
+
+## Other ways to explore marker genes:
+
+We also do the same but plot violin plots instead of feature plots.
+
+```{r}
+for (i in 1:length(top_marker_each$gene)) {
+  print(VlnPlot(pbmc, features.plot = top_marker_each$gene[i]))
+}
+```
+
+## The DotPlot
+
+Dotplots are a concise way of exploring percent of cells expressing a gene and the gene expression intensity. This give much of the same information a heatmap gives us without the resolution of looking at every cell. This can shield us from some of the noise caused by drop out and scales better with larger datasets.
+
+```{r}
+DotPlot(pbmc, genes.plot=unique(top_marker_each$gene))
+```
+
+Congratulations! You an plots cell groups and discover marker genes that describe cell groups. This is a very powerful analysis pattern often seen in publications. Well done!
+
+## Pathway Analysis
+
+
+
+
+## Diffusion Maps
+
+
+```{r, dm, fig.width=12, fig.height=8}
+pbmc
+# Run Diffusion on variable genes
+pbmc <- RunDiffusion(pbmc,genes.use = pbmc@var.genes,max.dim = 5)
+#DMPlot(pbmc)
+# Run Diffusion map on first 10 PCs
+#pbmc <- RunDiffusion(pbmc,dims.use = 1:10,max.dim = 5)
+# Plot results
+DMPlot(pbmc,dim.1 = 1, dim.2 = 2)
+```
+
+## Sources
+
+This practical is derived from the following resources, please visit them for updates and more details.
+
+1. Seurat2:  http://satijalab.org/seurat
