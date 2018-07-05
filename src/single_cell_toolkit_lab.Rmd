@@ -1,5 +1,5 @@
 ---
-title: "Single-cell Toolkit Lab - 1 (10X 2.7K PBMCs)"
+title: "Single-cell Toolkit Lab (10X 2.7K PBMCs)"
 output: html_document
 ---
 
@@ -831,6 +831,10 @@ table(pbmc@ident,cd4_Tcell>minScore)
 
 
 ## Diffusion Maps
+
+In cases where the question of interest has to do with a continuum of transcriptional changes like during development or differentiation (e.g. hematopoiesis), we may not expect to see discrete cell-types which cluster out. Instead, we expect to see a gradation. Diffusion maps offer a low dimensional embedding that supports continuous state transitions as one approach to map transcriptional trajectories. 
+
+While the pbmc data does not represent a differentiating system, we will practice `Seurat`'s diffusion map function. 
 
 ```{r, dm, fig.width=12, fig.height=8}
 pbmc
