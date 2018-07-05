@@ -476,7 +476,7 @@ Another option is to select the top significant PCs based on a jackstraw analysi
 
 ```{r jackstraw}
 
-pbmc=JackStraw(pbmc, num.pc = 20, num.replicate = 100, prop.freq = 0.01, display.progress = TRUE, do.par = FALSE, num.cores = 6, maxit = 1000)
+pbmc=JackStraw(pbmc, num.pc = 20, num.replicate = 100, prop.freq = 0.01, display.progress = TRUE, do.par = TRUE, num.cores = 2, maxit = 1000)
 JackStrawPlot(pbmc, PCs = 1:5, nCol = 3, score.thresh = 1e-05, plot.x.lim = 0.1, plot.y.lim = 0.3)
 
 ```
