@@ -310,7 +310,7 @@ How would you find the common cells among all the methods, the cells that all th
 One of the very popular products for 3' single cell transcriptomics sequencing is 10X's assays that can be processed with 10X's data processing pipeline CelLRanger. Here we go through many of the steps we saw earlier but starting with 10X output and using the Seurat R library. The Seurat R library take care of a lot of the details for us and makes available many useful functionalities. We will be using the same data as before, just in a different input format (the one provided by the CellRanger pipeline).
 
 ```{r, cache.lazy=FALSE, tidy=TRUE,  tidy.opts=list(width.cutoff=80)}
-pbmc.files <- "~/shared_ro/10x/hg19/"
+pbmc.files <- "~/shared_ro/10X/hg19/"
 pbmc.data <- Read10X(data.dir = pbmc.files) # read in a 10X directory using Seurat
 
 # Examine the memory use of the 
