@@ -1,11 +1,35 @@
 
+docker pull trinityctat/scellismb2018:latest
+
+  sudo groupadd -g 2000 training
+      sudo useradd -m -u 2000 -g 2000 training
+          echo 'training:training' | sudo chpasswd
+              sudo usermod -G training,www-data training
+                  sudo chsh training -s /bin/bash
+
+
+
+sudo usermod -a -G training ubuntu
+logout,login
+
+
+### other basic software installations
+
+sudo apt-get install -y python
+sudo apt-get install -y emacs
+
+
+
+
+
 sudo mkdir /data
 sudo chown training /data
 sudo chgrp training /data
 
 cd /data
+sudo chmod 775 .
 
-wget https://data.broadinstitute.org/Trinity/RNASEQ_WORKSHOP/
+wget https://data.broadinstitute.org/Trinity/RNASEQ_WORKSHOP/ismb_sc2018.pbmcs.tar.gz
 
 git clone git@github.com:SingleCellTranscriptomics/ISMB2018_SingleCellTranscriptomeTutorial.git
 
