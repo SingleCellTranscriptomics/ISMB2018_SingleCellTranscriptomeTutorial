@@ -111,3 +111,15 @@ CMD ["/usr/bin/supervisord","-c","/etc/supervisor/conf.d/supervisord.conf"]
 
 RUN Rscript -e 'library(devtools); install_github("satijalab/seurat", ref = "develop");'
 
+
+## for Matan:
+
+RUN Rscript -e 'source("http://bioconductor.org/biocLite.R");library(BiocInstaller); biocLite("AUCell", dep = TRUE);'
+
+RUN Rscript -e 'source("http://bioconductor.org/biocLite.R");library(BiocInstaller); biocLite("destiny", dep = TRUE);'
+
+RUN Rscript -e 'source("http://bioconductor.org/biocLite.R");library(BiocInstaller); biocLite("fgsea", dep = TRUE);'
+
+RUN Rscript -e 'source("http://bioconductor.org/biocLite.R");library(BiocInstaller); biocLite("DropletUtils", dep = TRUE);'
+
+
