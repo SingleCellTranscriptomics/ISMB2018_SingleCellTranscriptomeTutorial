@@ -30,8 +30,15 @@ cd /data
 sudo chmod 775 .
 
 wget https://data.broadinstitute.org/Trinity/RNASEQ_WORKSHOP/ismb_sc2018.pbmcs.tar.gz
+tar zxvf ismb_sc2018.pbmcs.tar.gz
 
-git clone git@github.com:SingleCellTranscriptomics/ISMB2018_SingleCellTranscriptomeTutorial.git
+#git clone git@github.com:SingleCellTranscriptomics/ISMB2018_SingleCellTranscriptomeTutorial.git
+git clone https://github.com/SingleCellTranscriptomics/ISMB2018_SingleCellTranscriptomeTutorial.git
 
-ISMB2018_SingleCellTranscriptomeTutorial/user_setup/init_users.py  --num_users 5 --user_id_start 5 --ssh_base_port 10005 | tee launch.cmds
+
+ISMB2018_SingleCellTranscriptomeTutorial/user_setup/init_users.py  --num_users 65 --user_id_start 1 --ssh_base_port 10001 | tee launch.cmds
+
+
+
+
 
