@@ -616,7 +616,7 @@ Although you can always just perform differential expression on one cluster to g
 
 ## Get genes uniquely DE in each cluster:
 ```{r}
-genes_uniquely_DE = all.markers.sortedByPval %>% dplyr::filter(avg_logFC > MIN_LOGFOLD_CHANGE) %>% group_by(gene) %>%  summarize(n=n()) %>%  filter(n==1)
+genes_uniquely_DE = all.markers.sortedByPval %>% dplyr::filter(avg_logFC > MIN_LOGFOLD_CHANGE) %>% group_by(gene) %>%  summarize(n=n()) %>%  dplyr::filter(n==1)
 
 genes_uniquely_DE.markers.sortedByPval =
   all.markers.sortedByPval[all.markers.sortedByPval$gene
@@ -703,8 +703,7 @@ There are many sources for gene-set information. On popular source is msigdb whi
 
 ```{r}
 
-#msigdbGO = gmtPathways("~/shared_ro/pathway/c5.all.v6.1.symbols.gmt")
-msigdbGO = gmtPathways("~/shared_ro/pathway/msigdb.v6.1.symbols.gmt")
+msigdbGO = gmtPathways("~/shared_ro/pathway/c5.all.v6.1.symbols.gmt")
 head(msigdbGO,3)
 
 ```
