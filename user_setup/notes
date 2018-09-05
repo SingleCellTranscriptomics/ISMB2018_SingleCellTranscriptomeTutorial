@@ -1,42 +1,81 @@
 
-docker pull trinityctat/scellismb2018:latest
 
-  sudo groupadd -g 2000 training
+# basic setup for workshop
+
+## google compute engine console
+
+- add a new linux machine, ideally running ubuntu linux
+
+- from the google compute engine networking console, open port range from 10000-10100
+
+
+## setup machine
+
+From within an ssh session:
+
+Pull the docker image
+
+    docker pull trinityctat/scellismb2018:latest
+
+Add 'training' user group:
+
+      sudo groupadd -g 2000 training
       sudo useradd -m -u 2000 -g 2000 training
-          echo 'training:training' | sudo chpasswd
-              sudo usermod -G training,www-data training
-                  sudo chsh training -s /bin/bash
+      echo 'training:training' | sudo chpasswd
+      sudo usermod -G training,www-data training
+      sudo chsh training -s /bin/bash
+
+       sudo usermod -a -G training ubuntu
+
+Now, logout and re-login so the new 'training' group settings take effect.
 
 
+Other basic software installations
 
-sudo usermod -a -G training ubuntu
-logout,login
-
-
-### other basic software installations
-
-sudo apt-get install -y python
-sudo apt-get install -y emacs
+     sudo apt-get install -y python
+     sudo apt-get install -y emacs
 
 
+Create the work area
+
+    sudo mkdir /data
+    sudo chown training /data
+    sudo chgrp training /data
+
+    cd /data
+    sudo chmod 775 .
+
+Install the data sets:
+
+    wget https://data.broadinstitute.org/Trinity/RNASEQ_WORKSHOP/ismb_sc2018.pbmcs.tar.gz
+    tar zxvf ismb_sc2018.pbmcs.tar.gz
+
+Pull down the github code/markdowns, etc. for the training workshop:
+
+    git clone https://github.com/SingleCellTranscriptomics/ISMB2018_SingleCellTranscriptomeTutorial.git
 
 
+Generate commands to launch docker instances, one per student, each with a unique port number assigned:
 
-sudo mkdir /data
-sudo chown training /data
-sudo chgrp training /data
+    ISMB2018_SingleCellTranscriptomeTutorial/user_setup/init_users.py  \
+         --num_users 65 \
+         --user_id_start 1 \
+         --ssh_base_port 10001 | tee launch.cmds
+         
+Launch the docker instances:
 
-cd /data
-sudo chmod 775 .
+    sudo sh ./launch.cmds
+    
+    
+Visit one of the Rstudio instances:
 
-wget https://data.broadinstitute.org/Trinity/RNASEQ_WORKSHOP/ismb_sc2018.pbmcs.tar.gz
-tar zxvf ismb_sc2018.pbmcs.tar.gz
+    http://${GCE.IP.ADDRESS}:${PORT}
+    
+    where ${GCE.IP.ADDRESS} is the IP address of your google compute engine machine
+    and ${PORT} is the port number assigned to that docker instance.
+    
+    
 
-#git clone git@github.com:SingleCellTranscriptomics/ISMB2018_SingleCellTranscriptomeTutorial.git
-git clone https://github.com/SingleCellTranscriptomics/ISMB2018_SingleCellTranscriptomeTutorial.git
-
-
-ISMB2018_SingleCellTranscriptomeTutorial/user_setup/init_users.py  --num_users 65 --user_id_start 1 --ssh_base_port 10001 | tee launch.cmds
 
 
 
