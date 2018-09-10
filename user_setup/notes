@@ -25,7 +25,7 @@ Add 'training' user group:
       sudo usermod -G training,www-data training
       sudo chsh training -s /bin/bash
 
-       sudo usermod -a -G training ubuntu
+       sudo usermod -a -G training usrname
 
 Now, logout and re-login so the new 'training' group settings take effect.
 
